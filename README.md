@@ -24,3 +24,6 @@ Thanks all original(MarkHC's) CSGOSimple devs.
 ![ESP Screenshot](https://i.imgur.com/NRJ4e2n.png)
 ![ESP Screenshot](https://i.imgur.com/KWO0bsw.png)
 ![ESP Screenshot](https://i.imgur.com/17iVttS.png)
+
+# features added by me
+replaced hooking method with minhook
