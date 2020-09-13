@@ -33,11 +33,13 @@ namespace Hooks
 	inline unsigned int get_virtual(void* _class, unsigned int index) { return static_cast<unsigned int>((*static_cast<int**>(_class))[index]); }
 
 	namespace menu {
+		inline std::add_pointer_t< HRESULT __stdcall(IDirect3DDevice9*) > end_scene_original{ nullptr };
 		inline std::add_pointer_t< HRESULT __stdcall(IDirect3DDevice9*, D3DPRESENT_PARAMETERS*) > reset_original{ nullptr };
-		inline std::add_pointer_t< HRESULT __stdcall(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*) > present_original{ nullptr };
+		//inline std::add_pointer_t< HRESULT __stdcall(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*) > present_original{ nullptr };
 
+		long __stdcall hkEndScene(IDirect3DDevice9* pDevice);
 		long __stdcall reset(IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* params);
-		HRESULT __stdcall present(IDirect3DDevice9* device, const RECT* src, const RECT* dest, HWND window_override, const RGNDATA* dirty_region);
+		//HRESULT __stdcall present(IDirect3DDevice9* device, const RECT* src, const RECT* dest, HWND window_override, const RGNDATA* dirty_region);
 	}
 
     /*inline vfunc_hook hlclient_hook;
@@ -50,7 +52,7 @@ namespace Hooks
 	inline vfunc_hook clientmode_hook;
 	inline vfunc_hook sv_cheats;*/
 
-	namespace create_move {
+	namespace hkCreateMove {
 		using fn = bool(__stdcall*)(float, CUserCmd*);
 		bool __stdcall hook(float input_sample_frametime, CUserCmd* cmd);
 	}
@@ -60,20 +62,20 @@ namespace Hooks
 		void __stdcall hook();
 	}
 
-	/*namespace paint_traverse {
-		using fn = void(__thiscall*)(IPanel*, unsigned int, bool, bool);
-		void __stdcall hook(unsigned int panel, bool force_repaint, bool allow_force);
-	}*/
+	namespace paint_traverse {
+		using fn = void(__fastcall*)(void*, int, vgui::VPANEL, bool, bool);
+		void __fastcall hook(void* _this, int edx, vgui::VPANEL panel, bool forceRepaint, bool allowForce);
+	}
 
-	/*namespace end_scene {
-		using fn = long(__stdcall*)(IDirect3DDevice9*);
-		long __stdcall hook(IDirect3DDevice9* pDevice);
-	}*/
-
-	/*namespace draw_model {
+	namespace draw_model {
 		using fn = void(__fastcall*)(void*, int, IMatRenderContext*, const DrawModelState_t&, const ModelRenderInfo_t&, matrix3x4_t*);
 		void __fastcall hook(void* _this, int, IMatRenderContext* ctx, const DrawModelState_t& state, const ModelRenderInfo_t& pInfo, matrix3x4_t* pCustomBoneToWorld);
-	}*/
+	}
+
+	namespace do_post_effects {
+		using fn = int(__fastcall*)(void*, int, int);
+		int __fastcall hook(void* _this, int, int a1);
+	}
 
     /*long __stdcall hkEndScene(IDirect3DDevice9* device);
     long __stdcall hkReset(IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* pPresentationParameters);

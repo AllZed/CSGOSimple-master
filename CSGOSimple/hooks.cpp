@@ -12,10 +12,11 @@
 #include "features/glow.hpp"
 #pragma intrinsic(_ReturnAddress)  
 
-Hooks::create_move::fn create_move_original = nullptr;
-Hooks::surface::fn lock_cursor_original = nullptr;
-//Hooks::draw_model::fn draw_model_original = nullptr;
-//Hooks::paint_traverse::fn paint_traverse_original = nullptr;
+Hooks::hkCreateMove::fn create_move_o = nullptr;
+Hooks::surface::fn lock_cursor_o = nullptr;
+Hooks::draw_model::fn draw_model_original = nullptr;
+Hooks::paint_traverse::fn paint_traverse_original = nullptr;
+Hooks::do_post_effects::fn do_post_effects_o = nullptr;
 
 IDirect3DVertexDeclaration9* vert_declaration{ nullptr };
 IDirect3DVertexShader9* vert_shader{ nullptr };
@@ -49,32 +50,41 @@ namespace Hooks {
 
 		const auto create_move_target = reinterpret_cast<void*>(get_virtual(g_ClientMode, 24));
 		const auto lock_cursor_target = reinterpret_cast<void*>(get_virtual(g_VGuiSurface, 67));
-		//const auto draw_model_target = reinterpret_cast<void*>(get_virtual(g_MatSystem, 21));
-		//const auto paint_traverse_target = reinterpret_cast<void*>(get_virtual(g_VGuiPanel, 41));
+		const auto end_scene_target = reinterpret_cast<void*>(get_virtual(g_D3DDevice9, 42));
+		const auto draw_model_target = reinterpret_cast<void*>(get_virtual(g_MdlRender, 21));
+		const auto paint_traverse_target = reinterpret_cast<void*>(get_virtual(g_VGuiPanel, 41));
+		const auto do_post_effects_t = reinterpret_cast<void*>(get_virtual(g_ClientMode, 44));
 
+		//const auto end_scene_target = **reinterpret_cast<void***>(Utils::PatternScan("shaderapidx9.dll", "A1 ?? ?? ?? ?? 50 8B 08 FF 51 0C") + 1);
 		const auto reset_target = **reinterpret_cast<void***>(Utils::PatternScan("gameoverlayrenderer.dll", "FF 15 ? ? ? ? 8B F8 85 FF 78 18") + 2);
-		const auto present_target = **reinterpret_cast<void***>(Utils::PatternScan("gameoverlayrenderer.dll", "FF 15 ? ? ? ? 8B F8 85 DB") + 2);
+		//const auto present_target = **reinterpret_cast<void***>(Utils::PatternScan("gameoverlayrenderer.dll", "FF 15 ? ? ? ? 8B F8 85 DB") + 2);
 
 		if (MH_Initialize() != MH_OK)
 			throw std::runtime_error("failed to initialize MH_Initialize.");
 
+		if (MH_CreateHook(end_scene_target, static_cast<LPVOID>(&menu::hkEndScene), reinterpret_cast<void**>(&menu::end_scene_original)) != MH_OK)
+			throw std::runtime_error("failed to initialize end_scene. (outdated imgui?)");
+
 		if (MH_CreateHook(reset_target, static_cast<LPVOID>(&menu::reset), reinterpret_cast<void**>(&menu::reset_original)) != MH_OK)
 			throw std::runtime_error("failed to initialize reset. (outdated imgui?)");
 
-		if (MH_CreateHook(present_target, static_cast<LPVOID>(&menu::present), reinterpret_cast<void**>(&menu::present_original)) != MH_OK)
-			throw std::runtime_error("failed to initialize present. (outdated imgui?)");
+		/*if (MH_CreateHook(present_target, static_cast<LPVOID>(&menu::present), reinterpret_cast<void**>(&menu::present_original)) != MH_OK)
+			throw std::runtime_error("failed to initialize present. (outdated imgui?)");*/
 
-		if (MH_CreateHook(create_move_target, &create_move::hook, reinterpret_cast<void**>(&create_move_original)) != MH_OK)
+		if (MH_CreateHook(create_move_target, &hkCreateMove::hook, reinterpret_cast<void**>(&create_move_o)) != MH_OK)
 			throw std::runtime_error("failed to initialize create_move. (outdated index?)");
 
-		if (MH_CreateHook(lock_cursor_target, &surface::hook, reinterpret_cast<void**>(&lock_cursor_original)) != MH_OK)
+		if (MH_CreateHook(lock_cursor_target, &surface::hook, reinterpret_cast<void**>(&lock_cursor_o)) != MH_OK)
 			throw std::runtime_error("failed to initialize lock_cursor. (outdated index?)");
 
-		/*if (MH_CreateHook(paint_traverse_target, &paint_traverse::hook, reinterpret_cast<void**>(&paint_traverse_original)) != MH_OK)
-			throw std::runtime_error("failed to initialize paint_traverse. (outdated index?)");*/
+		if (MH_CreateHook(paint_traverse_target, &paint_traverse::hook, reinterpret_cast<void**>(&paint_traverse_original)) != MH_OK)
+			throw std::runtime_error("failed to initialize paint_traverse. (outdated index?)");
 
-		/*if (MH_CreateHook(draw_model_target, &draw_model::hook, reinterpret_cast<void**>(&draw_model_original)) != MH_OK)
-			throw std::runtime_error("failed to initialize draw_model. (outdated index?)");*/
+		if (MH_CreateHook(draw_model_target, &draw_model::hook, reinterpret_cast<void**>(&draw_model_original)) != MH_OK)
+			throw std::runtime_error("failed to initialize draw_model. (outdated index?)");
+
+		if (MH_CreateHook(do_post_effects_t, &do_post_effects::hook, reinterpret_cast<void**>(&do_post_effects_o)) != MH_OK)
+			throw std::runtime_error("failed to initialize do_post_effects. (outdated index?)");
 
 		if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK)
 			throw std::runtime_error("failed to enable hooks.");
@@ -103,10 +113,8 @@ namespace Hooks {
 		ImGui::DestroyContext();*/
 	}
 	//--------------------------------------------------------------------------------
-	/*long __stdcall hkEndScene(IDirect3DDevice9* pDevice)
+	long __stdcall Hooks::menu::hkEndScene(IDirect3DDevice9* pDevice)
 	{
-		static auto oEndScene = direct3d_hook.get_original<decltype(&hkEndScene)>(index::EndScene);
-
 		static auto viewmodel_fov = g_CVar->FindVar("viewmodel_fov");
 		static auto mat_ambient_light_r = g_CVar->FindVar("mat_ambient_light_r");
 		static auto mat_ambient_light_g = g_CVar->FindVar("mat_ambient_light_g");
@@ -141,7 +149,6 @@ namespace Hooks {
 		pDevice->SetSamplerState(NULL, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);
 		pDevice->SetSamplerState(NULL, D3DSAMP_ADDRESSW, D3DTADDRESS_WRAP);
 		pDevice->SetSamplerState(NULL, D3DSAMP_SRGBTEXTURE, NULL);
-
 		
 		ImGui_ImplDX9_NewFrame();
 		ImGui_ImplWin32_NewFrame();
@@ -155,6 +162,22 @@ namespace Hooks {
 
 		ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
 
+		static uintptr_t gameoverlay_return_address = 0;
+
+		if (!gameoverlay_return_address) {
+			MEMORY_BASIC_INFORMATION info;
+			VirtualQuery(_ReturnAddress(), &info, sizeof(MEMORY_BASIC_INFORMATION));
+
+			char mod[MAX_PATH];
+			GetModuleFileNameA((HMODULE)info.AllocationBase, mod, MAX_PATH);
+
+			if (strstr(mod, ("gameoverlay")))
+				gameoverlay_return_address = (uintptr_t)(_ReturnAddress());
+		}
+
+		if (gameoverlay_return_address != (uintptr_t)(_ReturnAddress()))
+			return end_scene_original(pDevice);
+
 		pDevice->SetRenderState(D3DRS_COLORWRITEENABLE, colorwrite);
 		pDevice->SetRenderState(D3DRS_SRGBWRITEENABLE, srgbwrite);
 		pDevice->SetRenderState(D3DRS_COLORWRITEENABLE, dwOld_D3DRS_COLORWRITEENABLE);
@@ -162,24 +185,22 @@ namespace Hooks {
 		pDevice->SetVertexDeclaration(vert_dec);
 		pDevice->SetVertexShader(vert_shader);
 
-		return oEndScene(pDevice);
+		return menu::end_scene_original(pDevice);
 	}
 	//--------------------------------------------------------------------------------
-	long __stdcall hkReset(IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* pPresentationParameters)
+	long __stdcall Hooks::menu::reset(IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* pPresentationParameters)
 	{
-		static auto oReset = direct3d_hook.get_original<decltype(&hkReset)>(index::Reset);
-
 		Menu::Get().OnDeviceLost();
 
-		auto hr = oReset(device, pPresentationParameters);
+		auto hr = Hooks::menu::reset_original(device, pPresentationParameters);
 
 		if (hr >= 0)
 			Menu::Get().OnDeviceReset();
 
 		return hr;
-	}*/
+	}
 	//--------------------------------------------------------------------------------
-	HRESULT __stdcall Hooks::menu::present(IDirect3DDevice9* device, const RECT* src, const RECT* dest, HWND window_override, const RGNDATA* dirty_region) {
+	/*HRESULT __stdcall Hooks::menu::present(IDirect3DDevice9* device, const RECT* src, const RECT* dest, HWND window_override, const RGNDATA* dirty_region) {
 		// Save state
 		device->GetRenderState(D3DRS_COLORWRITEENABLE, &old_d3drs_colorwriteenable);
 		device->GetVertexDeclaration(&vert_declaration);
@@ -190,11 +211,11 @@ namespace Hooks {
 		device->SetSamplerState(NULL, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);
 		device->SetSamplerState(NULL, D3DSAMP_ADDRESSW, D3DTADDRESS_WRAP);
 		device->SetSamplerState(NULL, D3DSAMP_SRGBTEXTURE, NULL);
-
+		*/
 		/*uncomment this if you wish to disable anti aliasing. see gui.cpp too
 		device->SetRenderState( D3DRS_MULTISAMPLEANTIALIAS, FALSE );
 		device->SetRenderState( D3DRS_ANTIALIASEDLINEENABLE, FALSE );*/
-
+	/*
 		ImGui_ImplDX9_Init(device);
 
 		ImGui_ImplDX9_NewFrame();
@@ -227,10 +248,10 @@ namespace Hooks {
 
 		ImGui_ImplDX9_InvalidateDeviceObjects();
 		return reset_original(device, params);
-	}
+	}*/
 
-	bool __stdcall Hooks::create_move::hook(float input_sample_frametime, CUserCmd* cmd) {
-		create_move_original(input_sample_frametime, cmd);
+	bool __stdcall Hooks::hkCreateMove::hook(float input_sample_frametime, CUserCmd* cmd) {
+		create_move_o(input_sample_frametime, cmd);
 
 		if (!cmd || !cmd->command_number)
 			return false;
@@ -239,8 +260,15 @@ namespace Hooks {
 		__asm mov frame_pointer, ebp;
 		bool& send_packet = *reinterpret_cast<bool*>(*frame_pointer - 0x1C);
 
+		if (Menu::Get().IsVisible())
+			cmd->buttons &= ~IN_ATTACK;
+
 		if (g_Options.misc_bhop)
 			BunnyHop::OnCreateMove(cmd);
+
+		// https://github.com/spirthack/CSGOSimple/issues/69
+		if (g_Options.misc_showranks && cmd->buttons & IN_SCORE) // rank revealer will work even after unhooking, idk how to "hide" ranks  again
+			g_CHLClient->DispatchUserMessage(CS_UM_ServerRankRevealAll, 0, 0, nullptr);
 
 		return false;
 	}
@@ -252,10 +280,10 @@ namespace Hooks {
 			return;
 		}
 
-		lock_cursor_original(g_VGuiSurface);
+		lock_cursor_o(g_VGuiSurface);
 	}
 
-	/*void __fastcall Hooks::draw_model::hook(void* _this, int edx, IMatRenderContext* ctx, const DrawModelState_t& state, const ModelRenderInfo_t& pInfo, matrix3x4_t* pCustomBoneToWorld)
+	void __fastcall Hooks::draw_model::hook(void* _this, int edx, IMatRenderContext* ctx, const DrawModelState_t& state, const ModelRenderInfo_t& pInfo, matrix3x4_t* pCustomBoneToWorld)
 	{
 		if (g_MdlRender->IsForcedMaterialOverride() &&
 			!strstr(pInfo.pModel->szName, "arms") &&
@@ -263,18 +291,16 @@ namespace Hooks {
 			return draw_model_original(_this, edx, ctx, state, pInfo, pCustomBoneToWorld);
 		}
 
-		Chams::Get().OnDrawModelExecute(ctx, state, pInfo, pCustomBoneToWorld);
+		//Chams::Get().OnDrawModelExecute(ctx, state, pInfo, pCustomBoneToWorld);
 
 		draw_model_original(_this, edx, ctx, state, pInfo, pCustomBoneToWorld);
 
 		g_MdlRender->ForcedMaterialOverride(nullptr);
-	}*/
+	}
 
-	/*void __stdcall hkCreateMove(int sequence_number, float input_sample_frametime, bool active, bool& bSendPacket)
+	/*void __stdcall Hooks::hkCreateMove::hook(int sequence_number, float input_sample_frametime, bool active, bool& bSendPacket)
 	{
-		static auto oCreateMove = hlclient_hook.get_original<decltype(&hkCreateMove_Proxy)>(index::CreateMove);
-
-		oCreateMove(g_CHLClient, 0, sequence_number, input_sample_frametime, active);
+		create_move_o(g_CHLClient, 0, sequence_number, input_sample_frametime, active);
 
 		auto cmd = g_Input->GetUserCmd(sequence_number);
 		auto verified = g_Input->GetVerifiedCmd(sequence_number);
@@ -297,7 +323,7 @@ namespace Hooks {
 		verified->m_crc = cmd->GetChecksum();
 	}*/
 	//--------------------------------------------------------------------------------
-	/*__declspec(naked) void __fastcall hkCreateMove_Proxy(void* _this, int, int sequence_number, float input_sample_frametime, bool active)
+	/*__declspec(naked) void __fastcall Hooks::hkCreateMove_Proxy::hook(void* _this, int, int sequence_number, float input_sample_frametime, bool active)
 	{
 		__asm
 		{
@@ -313,14 +339,13 @@ namespace Hooks {
 			pop  ebp
 			retn 0Ch
 		}
-	}
+	}*/
 	//--------------------------------------------------------------------------------
-	void __fastcall hkPaintTraverse(void* _this, int edx, vgui::VPANEL panel, bool forceRepaint, bool allowForce)
+	void __fastcall Hooks::paint_traverse::hook(void* _this, int edx, vgui::VPANEL panel, bool forceRepaint, bool allowForce)
 	{
 		static auto panelId = vgui::VPANEL{ 0 };
-		static auto oPaintTraverse = vguipanel_hook.get_original<decltype(&hkPaintTraverse)>(index::PaintTraverse);
 
-		oPaintTraverse(g_VGuiPanel, edx, panel, forceRepaint, allowForce);
+		paint_traverse_original(g_VGuiPanel, edx, panel, forceRepaint, allowForce);
 
 		if (!panelId) {
 			const auto panelName = g_VGuiPanel->GetName(panel);
@@ -340,7 +365,7 @@ namespace Hooks {
 			Render::Get().BeginScene();
 		}
 	}
-	//--------------------------------------------------------------------------------
+	/*//--------------------------------------------------------------------------------
 	void __fastcall hkEmitSound1(void* _this, int edx, IRecipientFilter& filter, int iEntIndex, int iChannel, const char* pSoundEntry, unsigned int nSoundEntryHash, const char *pSample, float flVolume, int nSeed, float flAttenuation, int iFlags, int iPitch, const Vector* pOrigin, const Vector* pDirection, void* pUtlVecOrigins, bool bUpdatePositions, float soundtime, int speakerentity, int unk) {
 		static auto ofunc = sound_hook.get_original<decltype(&hkEmitSound1)>(index::EmitSound1);
 
@@ -366,19 +391,17 @@ namespace Hooks {
 
 		ofunc(g_EngineSound, edx, filter, iEntIndex, iChannel, pSoundEntry, nSoundEntryHash, pSample, flVolume, nSeed, flAttenuation, iFlags, iPitch, pOrigin, pDirection, pUtlVecOrigins, bUpdatePositions, soundtime, speakerentity, unk);
 
-	}
+	}*/
 	//--------------------------------------------------------------------------------
-	int __fastcall hkDoPostScreenEffects(void* _this, int edx, int a1)
+	int __fastcall Hooks::do_post_effects::hook(void* _this, int edx, int a1)
 	{
-		static auto oDoPostScreenEffects = clientmode_hook.get_original<decltype(&hkDoPostScreenEffects)>(index::DoPostScreenSpaceEffects);
-
 		if (g_LocalPlayer && g_Options.glow_enabled)
 			Glow::Get().Run();
 
-		return oDoPostScreenEffects(g_ClientMode, edx, a1);
+		return do_post_effects_o(g_ClientMode, edx, a1);
 	}
 	//--------------------------------------------------------------------------------
-	void __fastcall hkFrameStageNotify(void* _this, int edx, ClientFrameStage_t stage)
+	/*void __fastcall hkFrameStageNotify(void* _this, int edx, ClientFrameStage_t stage)
 	{
 		static auto ofunc = hlclient_hook.get_original<decltype(&hkFrameStageNotify)>(index::FrameStageNotify);
 		// may be u will use it lol
